@@ -143,7 +143,7 @@ type Quote struct {
 	FromCurrency    string          `json:"fromCurrency"`
 	FromAmount      decimal.Decimal `json:"fromAmount"`
 	Fee             decimal.Decimal `json:"fee"`
-	AmountToConvert decimal.Decimal `json:"amountToConvert"`
+	AmountToDeduct decimal.Decimal `json:"amountToDeduct"`
 	Rate            decimal.Decimal `json:"rate"`
 	ToCurrency      string          `json:"toCurrency"`
 	FinalAmount     decimal.Decimal `json:"totalAmount"`
@@ -176,19 +176,15 @@ func NewQuote(
 		return nil, err
 	}
 
-	// fromAmount + fee = amountToConvert * rate = toAmount
-	amountToConvert := fromAmount.Add(fee).RoundCeil(int32(infoFrom.Precision))
-	convertedAmount := amountToConvert.Mul(rate).RoundCeil(int32(infoTo.Precision))
-
 	return &Quote{
 		BaseCurrency:    baseCurrency,
 		FromCurrency:    fromCurrency,
 		FromAmount:      fromAmount,
 		Fee:             fee,
-		AmountToConvert: amountToConvert,
+		AmountToDeduct:  fromAmount.Add(fee).RoundCeil(int32(infoFrom.Precision)),
 		Rate:            rate,
 		ToCurrency:      toCurrency,
-		FinalAmount:     convertedAmount,
+		FinalAmount:     fromAmount.Mul(rate).RoundCeil(int32(infoTo.Precision)),
 		Date:            time.Now(),
 	}, nil
 }
