@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -26,14 +25,8 @@ type Currency struct {
 	SellRate  decimal.Decimal `json:"sellRate"`
 }
 
-// Currencies structure
-type Currencies struct {
-	mutex      sync.RWMutex
-	currencies []Currency // Maps ISO code to currency
-}
-
 // NewCurrencies creates a Currencies instance from a source of rates.
-func NewCurrencies[T any](sourceRates []T) (*Currencies, error) {
+func NewCurrencies[T any](sourceRates []T) ([]Currency, error) {
 	b, err := json.Marshal(sourceRates)
 	if err != nil {
 		return nil, err
@@ -48,21 +41,18 @@ func NewCurrencies[T any](sourceRates []T) (*Currencies, error) {
 		return nil, ErrEmptyCurrencySource
 	}
 
-	return &Currencies{currencies: currencies}, nil
+	return currencies, nil
 }
 
 // FindCurrency finds a currency by its ISO code.
-func (c *Currencies) FindCurrency(code string) (*Currency, error) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
-	if len(c.currencies) == 0 {
+func FindCurrency(currencies []Currency, code string) (*Currency, error) {
+	if len(currencies) == 0 {
 		return nil, ErrEmptyCurrencySource
 	}
 
-	for i := range c.currencies {
-		if strings.EqualFold(c.currencies[i].ISOCode, code) {
-			return &c.currencies[i], nil
+	for i := range currencies {
+		if strings.EqualFold(currencies[i].ISOCode, code) {
+			return &currencies[i], nil
 		}
 	}
 
@@ -89,7 +79,7 @@ func (c *Currencies) FindCurrency(code string) (*Currency, error) {
 //   - from 	(you have/source) 	= another currency
 //   - to 		(you want/target) 	= another currency
 //   - Rate: 	[Target to Base of: from] * [Base to Target of: to]
-func (c *Currencies) CalculateRate(baseCurrency, from, to string) (decimal.Decimal, error) {
+func CalculateRate(currencies []Currency, baseCurrency, from, to string) (decimal.Decimal, error) {
 	baseCurrency = strings.ToUpper(strings.ToUpper(baseCurrency))
 	from = strings.ToUpper(strings.ToUpper(from))
 	to = strings.ToUpper(strings.ToUpper(to))
@@ -99,14 +89,14 @@ func (c *Currencies) CalculateRate(baseCurrency, from, to string) (decimal.Decim
 		return decimal.NewFromInt(1), nil
 	}
 
-	_, err := c.FindCurrency(baseCurrency)
+	_, err := FindCurrency(currencies, baseCurrency)
 	if err != nil {
 		return decimal.Zero, ErrBaseCurrencyNotFound
 	}
 
 	// Base to Target Currency (Sell Rate)
 	if from == baseCurrency {
-		toCurrency, err := c.FindCurrency(to)
+		toCurrency, err := FindCurrency(currencies, to)
 		if err != nil {
 			return decimal.Zero, err
 		}
@@ -116,7 +106,7 @@ func (c *Currencies) CalculateRate(baseCurrency, from, to string) (decimal.Decim
 
 	// Target to Base Currency (Buy Rate)
 	if to == baseCurrency {
-		fromCurrency, err := c.FindCurrency(from)
+		fromCurrency, err := FindCurrency(currencies, from)
 		if err != nil {
 			return decimal.Zero, err
 		}
@@ -124,11 +114,11 @@ func (c *Currencies) CalculateRate(baseCurrency, from, to string) (decimal.Decim
 	}
 
 	// Cross Rate Conversion
-	fromCurrency, err := c.FindCurrency(from)
+	fromCurrency, err := FindCurrency(currencies, from)
 	if err != nil {
 		return decimal.Zero, err
 	}
-	toCurrency, err := c.FindCurrency(to)
+	toCurrency, err := FindCurrency(currencies, to)
 	if err != nil {
 		return decimal.Zero, err
 	}
@@ -139,52 +129,48 @@ func (c *Currencies) CalculateRate(baseCurrency, from, to string) (decimal.Decim
 
 // Quote structure
 type Quote struct {
-	BaseCurrency    string          `json:"baseCurrency"`
-	FromCurrency    string          `json:"fromCurrency"`
-	FromAmount      decimal.Decimal `json:"fromAmount"`
-	Fee             decimal.Decimal `json:"fee"`
+	BaseCurrency   string          `json:"baseCurrency"`
+	FromCurrency   string          `json:"fromCurrency"`
+	FromAmount     decimal.Decimal `json:"fromAmount"`
+	Fee            decimal.Decimal `json:"fee"`
 	AmountToDeduct decimal.Decimal `json:"amountToDeduct"`
-	Rate            decimal.Decimal `json:"rate"`
-	ToCurrency      string          `json:"toCurrency"`
-	FinalAmount     decimal.Decimal `json:"totalAmount"`
-	Date            time.Time       `json:"date"`
+	Rate           decimal.Decimal `json:"rate"`
+	ToCurrency     string          `json:"toCurrency"`
+	FinalAmount    decimal.Decimal `json:"totalAmount"`
+	Date           time.Time       `json:"date"`
 }
 
 // NewQuote creates a new quote object.
-func NewQuote(
-	rateSource *Currencies,
-	baseCurrency, fromCurrency, toCurrency string,
-	fromAmount,
-	fee decimal.Decimal,
+func NewQuote(rateSource []Currency, baseCurrency, fromCurrency, toCurrency string, fromAmount, fee decimal.Decimal,
 ) (*Quote, error) {
 	if rateSource == nil {
 		return nil, errors.New("currency object empty. shouldnt be")
 	}
 
-	rate, err := rateSource.CalculateRate(baseCurrency, fromCurrency, toCurrency)
+	rate, err := CalculateRate(rateSource, baseCurrency, fromCurrency, toCurrency)
 	if err != nil {
 		return nil, err
 	}
 
-	infoFrom, err := rateSource.FindCurrency(fromCurrency)
+	infoFrom, err := FindCurrency(rateSource, fromCurrency)
 	if err != nil {
 		return nil, err
 	}
 
-	infoTo, err := rateSource.FindCurrency(toCurrency)
+	infoTo, err := FindCurrency(rateSource, toCurrency)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Quote{
-		BaseCurrency:    baseCurrency,
-		FromCurrency:    fromCurrency,
-		FromAmount:      fromAmount,
-		Fee:             fee,
-		AmountToDeduct:  fromAmount.Add(fee).RoundCeil(int32(infoFrom.Precision)),
-		Rate:            rate,
-		ToCurrency:      toCurrency,
-		FinalAmount:     fromAmount.Mul(rate).RoundCeil(int32(infoTo.Precision)),
-		Date:            time.Now(),
+		BaseCurrency:   baseCurrency,
+		FromCurrency:   fromCurrency,
+		FromAmount:     fromAmount,
+		Fee:            fee,
+		AmountToDeduct: fromAmount.Add(fee).RoundCeil(int32(infoFrom.Precision)),
+		Rate:           rate,
+		ToCurrency:     toCurrency,
+		FinalAmount:    fromAmount.Mul(rate).RoundCeil(int32(infoTo.Precision)),
+		Date:           time.Now(),
 	}, nil
 }
