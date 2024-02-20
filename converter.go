@@ -80,9 +80,9 @@ func FindCurrency(currencies []Currency, code string) (*Currency, error) {
 //   - to 		(you want/target) 	= another currency
 //   - Rate: 	[Target to Base of: from] * [Base to Target of: to]
 func CalculateRate(currencies []Currency, baseCurrency, from, to string) (decimal.Decimal, error) {
-	baseCurrency = strings.ToUpper(strings.ToUpper(baseCurrency))
-	from = strings.ToUpper(strings.ToUpper(from))
-	to = strings.ToUpper(strings.ToUpper(to))
+	baseCurrency = strings.ToUpper(baseCurrency)
+	from = strings.ToUpper(from)
+	to = strings.ToUpper(to)
 
 	// Same Currency Conversion
 	if from == to {
@@ -141,8 +141,7 @@ type Quote struct {
 }
 
 // NewQuote creates a new quote object.
-func NewQuote(rateSource []Currency, baseCurrency, fromCurrency, toCurrency string, fromAmount, fee decimal.Decimal,
-) (*Quote, error) {
+func NewQuote(rateSource []Currency, baseCurrency, fromCurrency, toCurrency string, fromAmount, fee decimal.Decimal) (*Quote, error) {
 	if rateSource == nil {
 		return nil, errors.New("currency object empty. shouldnt be")
 	}
