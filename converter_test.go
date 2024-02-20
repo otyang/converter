@@ -179,7 +179,6 @@ func TestNewQuote_ValidInput(t *testing.T) {
 	// Call the function
 	got, err := NewQuote(rateSource, baseCurrency, fromCurrency, toCurrency, fromAmount, fee)
 	assert.NoError(t, err)
-
 	assert.Equal(t, want.BaseCurrency, got.BaseCurrency)
 	assert.Equal(t, want.FromCurrency, got.FromCurrency)
 	assert.Equal(t, want.FromAmount, got.FromAmount)
